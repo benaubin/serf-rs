@@ -42,12 +42,13 @@ macro_rules! cmd_arg {
 macro_rules! req {
     (
         $name:literal
-
+        $(#[$meta:meta])*
         $vis:vis $ident:ident( $($arg:ident: $arg_ty:ty),* ) -> $res:ty $({
             $($key:literal: $val:expr),*
         })?
     ) => {
         impl crate::Client {
+            $(#[$meta])*
             $vis fn $ident<'a>(&'a self$(, $arg: $arg_ty)*) -> crate::RPCRequest<'a, $res> {
                 #[allow(unused_mut)]
                 let mut buf = Vec::new();
@@ -94,6 +95,7 @@ macro_rules! res {
 
 req! {
     "handshake"
+    /// Send a handshake
     pub(crate) handshake(version: u32) -> () {
         "Version": &version
     }
@@ -101,6 +103,7 @@ req! {
 
 req! {
     "auth"
+    /// Send an auth key
     pub(crate) auth(auth_key: &str) -> () {
         "AuthKey": auth_key
     }
@@ -108,6 +111,7 @@ req! {
 
 req! {
     "event"
+    /// Fire an event
     pub fire_event(name: &str, payload: &[u8], coalesce: bool) -> () {
         "Name": name,
         "Payload": payload,
@@ -117,6 +121,7 @@ req! {
 
 req! {
     "force-leave"
+    /// Force a node to leave
     pub force_leave(node: &str) -> () {
         "Node": node
     }
@@ -132,6 +137,7 @@ res!(JoinResponse);
 
 req! {
     "join"
+    /// Join a serf cluster, given existing ip addresses. `replay` controls whether to replay old user events
     pub join(existing: &[&str], replay: bool) -> JoinResponse {
         "Existing": existing,
         "Replay": &replay
@@ -184,11 +190,13 @@ res!(MembersResponse);
 
 req! {
     "members"
+    /// Returns a list of all known members
     pub members() -> MembersResponse
 }
 
 req! {
     "members-filtered"
+    /// Returns a filtered list of all known members
     pub members_filtered(status: Option<&str>, name: Option<&str>, tags: Option<&HashMap<String, String>>) -> MembersResponse {
         "Status": &status,
         "Name": &name,
@@ -198,6 +206,7 @@ req! {
 
 req! {
     "tags"
+    /// Modifies the tags of the current node
     pub tags(add_tags: &[&str], delete_tags: &[&str]) -> MembersResponse {
         "Tags": add_tags,
         "DeleteTags": delete_tags
@@ -206,6 +215,7 @@ req! {
 
 req! {
     "stop"
+    /// Stops a stream by seq id (this is automatically called on Drop by the RPCStream struct)
     pub(crate) stop_stream(seq: u64) -> () {
         "Stop": &seq
     }
@@ -213,11 +223,13 @@ req! {
 
 req! {
     "leave"
+    /// Gracefully leave
     pub leave() -> ()
 }
 
 req! {
     "respond"
+    /// Response to a query
     pub query_respond(id: u64, payload: &[u8]) -> () {
         "ID": &id,
         "Payload": payload
@@ -246,6 +258,7 @@ res!(CoordinateResponse);
 
 req! {
     "get-coordinate"
+    /// Get a node's coordinate
     pub get_coordinate(node: &str) -> CoordinateResponse {
         "Node": node
     }
@@ -291,6 +304,7 @@ res!(AgentStats);
 
 req! {
     "stats"
+    /// Get information about the Serf agent.
     pub stats() -> AgentStats
 }
 
