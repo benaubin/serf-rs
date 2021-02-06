@@ -299,6 +299,7 @@ pub struct SerfInfo {
 pub struct AgentStats {
     pub agent: Agent,
     pub runtime: RuntimeInfo,
+    pub serf: SerfInfo,
     pub tags: HashMap<String, String>,
 }
 
