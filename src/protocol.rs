@@ -251,6 +251,48 @@ req! {
     }
 }
 
+#[derive(Deserialize, Debug)]
+pub struct Agent {
+    pub name: String
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RuntimeInfo {
+    pub os: String,
+    pub arch: String,
+    pub version: String,
+    pub max_procs: String,
+    pub goroutines: String,
+    pub cpu_count: String
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SerfInfo {
+    pub failed: String,
+    pub left: String,
+    pub event_time: String,
+    pub query_time: String,
+    pub event_queue: String,
+    pub members: String,
+    pub member_time: String,
+    pub intent_queue: String,
+    pub query_queue: String
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AgentStats {
+    pub agent: Agent,
+    pub runtime: RuntimeInfo,
+    pub tags: HashMap<String, String>
+
+}
+
+res!(AgentStats);
+
+req! {
+    "stats"
+    pub stats() -> AgentStats
+}
 
 // TODO: STREAM, MONITOR, QUERY
 

@@ -9,14 +9,15 @@ async fn main() {
 
     println!("{:?}", members);
 
+    let current_node_name = client.current_node_name().await.unwrap();
 
-    println!("{:?}", client.members_filtered(None, Some("f33ebcf6e036"), None).await.unwrap());
+    println!("we are node {}", current_node_name);
 
-    let coord = members.members.pop().unwrap().coordinate(&client).await.unwrap().unwrap();
+    let current_coord = client.get_coordinate(&current_node_name).await.unwrap().coord.unwrap();
 
     for member in members.members {
         let coord = client.get_coordinate(&member.name).await.unwrap().coord.unwrap();
 
-        println!("estimated rtt to {}: {}s", member.name, coord.estimate_rtt(&coord).as_secs_f32());
+        println!("estimated rtt to {}: {}s", member.name, coord.estimate_rtt(&current_coord).as_secs_f32());
     }
 }

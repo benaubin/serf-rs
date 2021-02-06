@@ -171,6 +171,10 @@ impl RPCClient {
 
         seq
     }
+
+    pub async fn current_node_name(&self) -> RPCResult<String> {
+        Ok(self.stats().await?.agent.name)
+    }
 }
 
 struct SerializedCommand {
