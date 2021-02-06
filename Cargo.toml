@@ -1,6 +1,6 @@
 [package]
 name = "serf-rpc"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Ben Aubin <ben@benaubin.com>"]
 edition = "2018"
 repository = "https://github.com/benaubin/serf-rs"
