@@ -1,6 +1,9 @@
-use std::{collections::{HashMap}, net::{IpAddr, Ipv4Addr, Ipv6Addr}};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+};
 
-use serde::{Deserialize, Deserializer, Serialize, de::Visitor};
+use serde::{Deserialize, Serialize};
 
 use crate::{RPCResponse, RPCResult};
 
@@ -8,14 +11,14 @@ use crate::{RPCResponse, RPCResult};
 #[serde(rename_all = "PascalCase")]
 pub(crate) struct RequestHeader {
     pub seq: u64,
-    pub command: &'static str
+    pub command: &'static str,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub(crate) struct ResponseHeader {
     pub seq: u64,
-    pub error: String
+    pub error: String,
 }
 
 macro_rules! count {
@@ -92,7 +95,6 @@ macro_rules! res {
     };
 }
 
-
 req! {
     "handshake"
     /// Send a handshake
@@ -130,7 +132,7 @@ req! {
 #[derive(Deserialize, Debug)]
 pub struct JoinResponse {
     #[serde(rename = "Num")]
-    pub nodes_joined: u64
+    pub nodes_joined: u64,
 }
 
 res!(JoinResponse);
@@ -158,17 +160,18 @@ pub struct Member {
     pub protocol_cur: u32,
     pub delegate_max: u32,
     pub delegate_min: u32,
-    pub delegate_cur: u32
+    pub delegate_cur: u32,
 }
 
-fn deserialize_ip_addr<'de, D>(de: D) -> Result<IpAddr, D::Error> where D: serde::Deserializer<'de> {
-    let addr = Ipv6Addr::from(
-        <u128 as serde::Deserialize>::deserialize(de)?
-    );
-    
-    // serf gives us ipv6 ips, with ipv4 addresses mapped to ipv6. 
+fn deserialize_ip_addr<'de, D>(de: D) -> Result<IpAddr, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let addr = Ipv6Addr::from(<u128 as serde::Deserialize>::deserialize(de)?);
+
+    // serf gives us ipv6 ips, with ipv4 addresses mapped to ipv6.
     // https://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses
-    // 
+    //
     // based on std's unstable to_ipv4_mapped()
     let addr = match addr.octets() {
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d] => {
@@ -183,7 +186,7 @@ fn deserialize_ip_addr<'de, D>(de: D) -> Result<IpAddr, D::Error> where D: serde
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct MembersResponse {
-    pub members: Vec<Member>
+    pub members: Vec<Member>,
 }
 
 res!(MembersResponse);
@@ -242,7 +245,7 @@ pub struct Coordinate {
     pub adjustment: f32,
     pub error: f32,
     pub height: f32,
-    pub vec: [f32; 8]
+    pub vec: [f32; 8],
 }
 
 #[derive(Deserialize, Debug)]
@@ -251,7 +254,7 @@ pub struct CoordinateResponse {
     pub ok: bool,
 
     #[serde(default)]
-    pub coord: Option<Coordinate>
+    pub coord: Option<Coordinate>,
 }
 
 res!(CoordinateResponse);
@@ -266,7 +269,7 @@ req! {
 
 #[derive(Deserialize, Debug)]
 pub struct Agent {
-    pub name: String
+    pub name: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -276,7 +279,7 @@ pub struct RuntimeInfo {
     pub version: String,
     pub max_procs: String,
     pub goroutines: String,
-    pub cpu_count: String
+    pub cpu_count: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -289,15 +292,14 @@ pub struct SerfInfo {
     pub members: String,
     pub member_time: String,
     pub intent_queue: String,
-    pub query_queue: String
+    pub query_queue: String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct AgentStats {
     pub agent: Agent,
     pub runtime: RuntimeInfo,
-    pub tags: HashMap<String, String>
-
+    pub tags: HashMap<String, String>,
 }
 
 res!(AgentStats);
@@ -313,33 +315,32 @@ req! {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "Event")]
 pub enum StreamMessage {
-    #[serde(rename="user")]
+    #[serde(rename = "user")]
     User {
-        #[serde(rename="LTime")]
-        ltime: u64,
-        #[serde(rename="Name")]
-        name: String,
-        #[serde(rename="Payload")]
-        payload: Vec<u8>,
-        #[serde(rename="Coalesce")]
-        coalesce: bool
-    },
-    #[serde(rename="member-join")]
-    MemberJoin {
-        #[serde(rename="Members")]
-        members: Vec<Member>
-    },
-    Query {
-        #[serde(rename="ID")]
-        id: u64,
-        #[serde(rename="LTime")]
+        #[serde(rename = "LTime")]
         ltime: u64,
         #[serde(rename = "Name")]
         name: String,
-        #[serde(rename="Payload")]
-        payload: Vec<u8>
-    }
-
+        #[serde(rename = "Payload")]
+        payload: Vec<u8>,
+        #[serde(rename = "Coalesce")]
+        coalesce: bool,
+    },
+    #[serde(rename = "member-join")]
+    MemberJoin {
+        #[serde(rename = "Members")]
+        members: Vec<Member>,
+    },
+    Query {
+        #[serde(rename = "ID")]
+        id: u64,
+        #[serde(rename = "LTime")]
+        ltime: u64,
+        #[serde(rename = "Name")]
+        name: String,
+        #[serde(rename = "Payload")]
+        payload: Vec<u8>,
+    },
 }
 res!(StreamMessage);
 

@@ -1,23 +1,27 @@
-use std::{collections::{HashMap}, fmt::Debug, net::{SocketAddr, TcpStream}};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    net::{SocketAddr, TcpStream},
+};
 
-use std::sync::{Mutex, Arc};
 use std::io;
+use std::sync::{Arc, Mutex};
 
 use io::{BufReader, Write};
-use protocol::{RequestHeader};
-use serde::{de::DeserializeOwned};
+use protocol::RequestHeader;
+use serde::de::DeserializeOwned;
 
 const MAX_IPC_VERSION: u32 = 1;
 
 mod coordinates;
 mod members;
-mod stream;
 mod request;
+mod stream;
 
 pub mod protocol;
 
-pub use stream::RPCStream;
 pub use request::RPCRequest;
+pub use stream::RPCStream;
 
 /// A wrapper allowing reading a Seq response.
 ///
@@ -34,7 +38,9 @@ impl<'a> SeqRead<'a> {
 trait SeqHandler: 'static + Send + Sync {
     fn handle(&self, res: RPCResult<SeqRead>);
     /// are we expecting more than one response?
-    fn streaming(&self) -> bool { false }
+    fn streaming(&self) -> bool {
+        false
+    }
 }
 
 type RPCResult<T = ()> = Result<T, String>;
@@ -42,12 +48,12 @@ type RPCResult<T = ()> = Result<T, String>;
 #[derive(Clone)]
 pub struct Client {
     dispatch: Arc<Mutex<DispatchMap>>,
-    tx: std::sync::mpsc::Sender<Vec<u8>>
+    tx: std::sync::mpsc::Sender<Vec<u8>>,
 }
 
 struct DispatchMap {
     map: HashMap<u64, Arc<dyn SeqHandler>>,
-    next_seq: u64
+    next_seq: u64,
 }
 
 impl Client {
@@ -59,13 +65,10 @@ impl Client {
 
         let dispatch = Arc::new(Mutex::new(DispatchMap {
             map: HashMap::new(),
-            next_seq: 0
+            next_seq: 0,
         }));
 
-        let client = Client {
-            dispatch,
-            tx
-        };
+        let client = Client { dispatch, tx };
 
         let dispatch = Arc::downgrade(&client.dispatch);
 
@@ -84,8 +87,9 @@ impl Client {
 
             // read loop
             while let Some(dispatch) = dispatch.upgrade() {
-                let protocol::ResponseHeader { seq, error } = rmp_serde::from_read(&mut reader).unwrap();
-                
+                let protocol::ResponseHeader { seq, error } =
+                    rmp_serde::from_read(&mut reader).unwrap();
+
                 let seq_handler = {
                     let mut dispatch = dispatch.lock().unwrap();
                     match dispatch.map.get(&seq) {
@@ -95,7 +99,7 @@ impl Client {
                             } else {
                                 dispatch.map.remove(&seq).unwrap()
                             }
-                        },
+                        }
                         None => {
                             // response with no handler, ignore
                             continue;
@@ -112,7 +116,7 @@ impl Client {
                 seq_handler.handle(res);
             }
         });
-        
+
         client.handshake(MAX_IPC_VERSION).await?;
 
         if let Some(auth_key) = auth_key {
@@ -125,7 +129,6 @@ impl Client {
     fn deregister_seq_handler(&self, seq: u64) -> Option<Arc<dyn SeqHandler>> {
         self.dispatch.lock().unwrap().map.remove(&seq)
     }
-
 
     /// Send a command, optionally registering a handler for responses.
     ///
@@ -144,7 +147,11 @@ impl Client {
             seq
         };
 
-        let mut buf = rmp_serde::encode::to_vec_named(&RequestHeader { command: cmd.name, seq }).unwrap();
+        let mut buf = rmp_serde::encode::to_vec_named(&RequestHeader {
+            command: cmd.name,
+            seq,
+        })
+        .unwrap();
         buf.extend_from_slice(&cmd.body);
 
         self.tx.send(buf).unwrap();
@@ -159,7 +166,7 @@ impl Client {
 
 struct SerializedCommand {
     name: &'static str,
-    body: Vec<u8>
+    body: Vec<u8>,
 }
 
 /// A trait for types that can be deserialized as the response to a command
@@ -171,5 +178,7 @@ pub trait RPCResponse: Sized + Send + 'static {
 }
 
 impl RPCResponse for () {
-    fn read_from(_: SeqRead<'_>) -> RPCResult<Self> { Ok(()) }
+    fn read_from(_: SeqRead<'_>) -> RPCResult<Self> {
+        Ok(())
+    }
 }

@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, sync::{Mutex, Arc}, task::{Poll, Waker}};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+    task::{Poll, Waker},
+};
 
 use futures::Stream;
 
@@ -8,18 +12,22 @@ impl Client {
     /// Sends a command and registers a streaming sequence handler.
     ///
     /// Note that the request is sent immediately (asyncronously, but not lazily).
-    pub(crate) fn start_stream<R: RPCResponse>(&self, name: &'static str, body: Vec<u8>) -> RPCStream<R> {
+    pub(crate) fn start_stream<R: RPCResponse>(
+        &self,
+        name: &'static str,
+        body: Vec<u8>,
+    ) -> RPCStream<R> {
         let handler = Arc::new(Mutex::new(RPCStreamHandler {
             waker: None,
-            queue: VecDeque::new()
+            queue: VecDeque::new(),
         }));
-        
+
         let seq = self.send_command(SerializedCommand { name, body }, Some(handler.clone()));
 
         RPCStream {
             seq,
             client: self.clone(),
-            handler
+            handler,
         }
     }
 }
@@ -27,12 +35,12 @@ impl Client {
 pub struct RPCStream<R: RPCResponse> {
     client: Client,
     seq: u64,
-    handler: Arc<Mutex<RPCStreamHandler<R>>>
+    handler: Arc<Mutex<RPCStreamHandler<R>>>,
 }
 
 pub(crate) struct RPCStreamHandler<R: RPCResponse> {
     waker: Option<Waker>,
-    queue: VecDeque<RPCResult<R>>
+    queue: VecDeque<RPCResult<R>>,
 }
 
 impl<T: RPCResponse> SeqHandler for Mutex<RPCStreamHandler<T>> {
@@ -42,9 +50,13 @@ impl<T: RPCResponse> SeqHandler for Mutex<RPCStreamHandler<T>> {
         let res = res.and_then(T::read_from);
         queue.push_back(res);
 
-        if let Some(waker) = waker.take() { waker.wake() }
+        if let Some(waker) = waker.take() {
+            waker.wake()
+        }
     }
-    fn streaming(&self) -> bool { true }
+    fn streaming(&self) -> bool {
+        true
+    }
 }
 
 impl<T: RPCResponse> Drop for RPCStream<T> {
@@ -63,12 +75,12 @@ impl<C: RPCResponse> Stream for RPCStream<C> {
     ) -> Poll<Option<Self::Item>> {
         let RPCStreamHandler { waker, queue } = &mut *self.handler.lock().unwrap();
 
-        if let Some(res) = queue.pop_front() { return Poll::Ready(Some(res)) };
+        if let Some(res) = queue.pop_front() {
+            return Poll::Ready(Some(res));
+        };
 
         waker.replace(cx.waker().clone());
 
         Poll::Pending
     }
 }
-
-

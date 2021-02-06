@@ -1,5 +1,7 @@
-use crate::{Client, RPCResult, protocol::{Coordinate, Member}};
-
+use crate::{
+    protocol::{Coordinate, Member},
+    Client, RPCResult,
+};
 
 impl Member {
     pub async fn coordinate(&self, client: &Client) -> RPCResult<Option<Coordinate>> {
