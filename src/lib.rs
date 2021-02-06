@@ -1,21 +1,22 @@
-use std::{collections::{HashMap, VecDeque}, net::{SocketAddr, TcpStream}, task::{Poll, Waker}};
+use std::{collections::{HashMap, VecDeque}, fmt::Debug, net::{SocketAddr, TcpStream}, task::{Poll, Waker}};
 
 use std::sync::{Mutex, Arc};
 use std::io;
 
 use futures::{Future, Stream};
-use io::Write;
+use io::{BufReader, Write};
 use protocol::{RequestHeader};
-use serde::{de::DeserializeOwned};
+use serde::{Deserializer, de::DeserializeOwned};
 
 const MAX_IPC_VERSION: u32 = 1;
 
 pub mod protocol;
 
-pub struct SeqRead<'a>(&'a mut TcpStream);
+pub struct SeqRead<'a>(&'a mut BufReader<TcpStream>);
 impl<'a> SeqRead<'a> {
-    fn read_msg<T: DeserializeOwned>(mut self) -> Result<T, rmp_serde::decode::Error> {
-        rmp_serde::from_read(&mut self.0)
+    fn read_msg<T: DeserializeOwned + Debug>(mut self) -> T {
+        // annoyingly, we pretty much have to panic, because otherwise the reader is left in an invalid state
+        rmp_serde::from_read(&mut self.0).unwrap()
     }
 }
 
@@ -61,11 +62,11 @@ impl RPCClient {
                 {
                     // read loop
                     let client = Arc::downgrade(&client);
-                    let mut stream = stream.try_clone().unwrap();
+                    let mut reader = BufReader::new(stream.try_clone().unwrap());
 
                     std::thread::spawn(move || {
                         while let Some(client) = client.upgrade() {
-                            let protocol::ResponseHeader { seq, error } = rmp_serde::from_read(&mut stream).unwrap();
+                            let protocol::ResponseHeader { seq, error } = rmp_serde::from_read(&mut reader).unwrap();
                             
                             let seq_handler = {
                                 let mut dispatch = client.dispatch.lock().unwrap();
@@ -85,7 +86,7 @@ impl RPCClient {
                             };
 
                             let res = if error.is_empty() {
-                                Ok(SeqRead(&mut stream))
+                                Ok(SeqRead(&mut reader))
                             } else {
                                 Err(error)
                             };
@@ -159,7 +160,7 @@ impl RPCClient {
             seq
         };
 
-        let mut buf = rmp_serde::encode::to_vec(&RequestHeader { command: cmd.name, seq }).unwrap();
+        let mut buf = rmp_serde::encode::to_vec_named(&RequestHeader { command: cmd.name, seq }).unwrap();
         buf.extend_from_slice(&cmd.body);
 
         self.tx.send(buf).unwrap();
@@ -292,3 +293,5 @@ impl<C: RPCResponse> Stream for RPCStream<C> {
         Poll::Pending
     }
 }
+
+

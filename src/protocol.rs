@@ -1,18 +1,22 @@
-use std::collections::{HashMap};
+use std::{collections::{HashMap}, net::{IpAddr, Ipv4Addr, Ipv6Addr}};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Visitor};
 
 use crate::{RPCResponse, RPCResult};
 
 #[derive(Serialize)]
 pub(crate) struct RequestHeader {
+    #[serde(rename = "Seq")]
     pub seq: u64,
+    #[serde(rename = "Command")]
     pub command: &'static str
 }
 
 #[derive(Deserialize)]
 pub(crate) struct ResponseHeader {
+    #[serde(rename = "Seq")]
     pub seq: u64,
+    #[serde(rename = "Error")]
     pub error: String
 }
 
@@ -32,7 +36,7 @@ macro_rules! cmd_arg {
         rmp::encode::write_map_len($buf, len).unwrap();
         $(
             rmp::encode::write_str($buf, $key).unwrap();
-            rmp_serde::encode::write($buf, $val).unwrap();
+            rmp_serde::encode::write_named($buf, $val).unwrap();
         )*
     }};
 }
@@ -83,7 +87,7 @@ macro_rules! res {
     ($ty:ty) => {
         impl RPCResponse for $ty {
             fn read_from(read: crate::SeqRead<'_>) -> RPCResult<Self> {
-                read.read_msg().map_err(|err| err.to_string())
+                Ok(read.read_msg())
             }
         }
     };
@@ -120,7 +124,7 @@ req! {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct JoinResponse {
     #[serde(rename = "Num")]
     pub nodes_joined: u64
@@ -136,29 +140,45 @@ req! {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
 pub struct Member {
-    #[serde(rename="Name")]
     pub name: String,
-    #[serde(rename="Addr")]
-    pub addr: [u8; 4],
-    #[serde(rename="Port")]
+    #[serde(deserialize_with = "deserialize_ip_addr")]
+    pub addr: IpAddr,
     pub port: u32,
-    #[serde(rename="Tags")]
     pub tags: HashMap<String, String>,
-    #[serde(rename="Status")]
     pub status: String,
-    #[serde(rename="ProtocolMin")]
     pub protocol_min: u32,
-    #[serde(rename="ProtocolMax")]
     pub protocol_max: u32,
-    #[serde(rename="DelegateCur")]
+    pub protocol_cur: u32,
+    pub delegate_max: u32,
+    pub delegate_min: u32,
     pub delegate_cur: u32
 }
 
-#[derive(Deserialize)]
+fn deserialize_ip_addr<'de, D>(de: D) -> Result<IpAddr, D::Error> where D: serde::Deserializer<'de> {
+    let addr = Ipv6Addr::from(
+        <u128 as serde::Deserialize>::deserialize(de)?
+    );
+    
+    // serf gives us ipv6 ips, with ipv4 addresses mapped to ipv6. 
+    // https://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses
+    // 
+    // based on std's unstable to_ipv4_mapped()
+    let addr = match addr.octets() {
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d] => {
+            IpAddr::V4(Ipv4Addr::new(a, b, c, d))
+        }
+        _ => IpAddr::V6(addr),
+    };
+
+    Ok(addr)
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
 pub struct MembersResponse {
-    #[serde(rename = "Members")]
     pub members: Vec<Member>
 }
 
@@ -206,24 +226,21 @@ req! {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
 pub struct Coordinate {
-    #[serde(rename="Adjustment")]
     pub adjustment: f32,
-    #[serde(rename="Error")]
     pub error: f32,
-    #[serde(rename="Height")]
     pub height: f32,
-    #[serde(rename="Vec")]
     pub vec: [f32; 8]
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
 pub struct CoordinateResponse {
-    #[serde(rename = "Ok")]
     pub ok: bool,
 
-    #[serde(rename = "Coord", default)]
+    #[serde(default)]
     pub coord: Option<Coordinate>
 }
 
@@ -239,7 +256,7 @@ req! {
 
 // TODO: STREAM, MONITOR, QUERY
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(tag = "Event")]
 pub enum StreamMessage {
     #[serde(rename="user")]
