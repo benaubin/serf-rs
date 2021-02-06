@@ -19,6 +19,10 @@ pub mod protocol;
 pub use stream::RPCStream;
 pub use request::RPCRequest;
 
+/// A wrapper allowing reading a Seq response.
+///
+/// This is an internal implementation detail, but public because it is exposed in traits.
+#[doc(hidden)]
 pub struct SeqRead<'a>(&'a mut BufReader<TcpStream>);
 impl<'a> SeqRead<'a> {
     fn read_msg<T: DeserializeOwned + Debug>(mut self) -> T {
@@ -158,6 +162,10 @@ struct SerializedCommand {
     body: Vec<u8>
 }
 
+/// A trait for types that can be deserialized as the response to a command
+///
+/// This is an internal implementation detail, but public because it is exposed in traits.
+#[doc(hidden)]
 pub trait RPCResponse: Sized + Send + 'static {
     fn read_from(read: SeqRead<'_>) -> RPCResult<Self>;
 }
