@@ -5,18 +5,16 @@ use serde::{Deserialize, Deserializer, Serialize, de::Visitor};
 use crate::{RPCResponse, RPCResult};
 
 #[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
 pub(crate) struct RequestHeader {
-    #[serde(rename = "Seq")]
     pub seq: u64,
-    #[serde(rename = "Command")]
     pub command: &'static str
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub(crate) struct ResponseHeader {
-    #[serde(rename = "Seq")]
     pub seq: u64,
-    #[serde(rename = "Error")]
     pub error: String
 }
 

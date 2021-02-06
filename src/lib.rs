@@ -10,7 +10,11 @@ use serde::{Deserializer, de::DeserializeOwned};
 
 const MAX_IPC_VERSION: u32 = 1;
 
+mod coordinates;
+mod members;
+
 pub mod protocol;
+
 
 pub struct SeqRead<'a>(&'a mut BufReader<TcpStream>);
 impl<'a> SeqRead<'a> {
