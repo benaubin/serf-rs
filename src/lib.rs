@@ -3,7 +3,10 @@ use std::{collections::{HashMap, VecDeque}, fmt::Debug, net::{SocketAddr, TcpStr
 use std::sync::{Mutex, Arc};
 use std::io;
 
-use futures::{Future, Stream};
+use futures::{Stream};
+
+use std::future::Future;
+
 use io::{BufReader, Write};
 use protocol::{RequestHeader};
 use serde::{Deserializer, de::DeserializeOwned};
@@ -32,9 +35,10 @@ trait SeqHandler: 'static + Send + Sync {
 
 type RPCResult<T = ()> = Result<T, String>;
 
+#[derive(Clone)]
 pub struct RPCClient {
-    dispatch: Mutex<DispatchMap>,
-    tx: crossbeam::channel::Sender<Vec<u8>>
+    dispatch: Arc<Mutex<DispatchMap>>,
+    tx: std::sync::mpsc::Sender<Vec<u8>>
 }
 
 struct DispatchMap {
@@ -46,67 +50,64 @@ impl RPCClient {
     /// Connect to hub.
     ///
     /// Waits for handshake, and optionally for authentication if an auth key is provided.
-    pub async fn connect(rpc_addr: SocketAddr, auth_key: Option<&str>) -> RPCResult<Arc<Self>> {
-        let (tx, rx) = crossbeam::channel::unbounded();
+    pub async fn connect(rpc_addr: SocketAddr, auth_key: Option<&str>) -> RPCResult<Self> {
+        let (tx, rx) = std::sync::mpsc::channel();
 
-        let client = Arc::new(RPCClient {
-            dispatch: Mutex::new(DispatchMap {
-                map: HashMap::new(),
-                next_seq: 0
-            }),
+        let dispatch = Arc::new(Mutex::new(DispatchMap {
+            map: HashMap::new(),
+            next_seq: 0
+        }));
+
+        let client = RPCClient {
+            dispatch,
             tx
-        });
+        };
 
-        {
-            let client = client.clone();
+        let dispatch = Arc::downgrade(&client.dispatch);
 
+        std::thread::spawn(move || {
+            let mut stream = TcpStream::connect(rpc_addr).unwrap();
+
+            // clone the stream to create a reader
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+            // write loop
             std::thread::spawn(move || {
-                let mut stream = TcpStream::connect(rpc_addr).unwrap();
-
-                {
-                    // read loop
-                    let client = Arc::downgrade(&client);
-                    let mut reader = BufReader::new(stream.try_clone().unwrap());
-
-                    std::thread::spawn(move || {
-                        while let Some(client) = client.upgrade() {
-                            let protocol::ResponseHeader { seq, error } = rmp_serde::from_read(&mut reader).unwrap();
-                            
-                            let seq_handler = {
-                                let mut dispatch = client.dispatch.lock().unwrap();
-                                match dispatch.map.get(&seq) {
-                                    Some(v) => {
-                                        if v.streaming() {
-                                            v.clone()
-                                        } else {
-                                            dispatch.map.remove(&seq).unwrap()
-                                        }
-                                    },
-                                    None => {
-                                        // response with no handler, ignore
-                                        continue;
-                                    }
-                                }
-                            };
-
-                            let res = if error.is_empty() {
-                                Ok(SeqRead(&mut reader))
-                            } else {
-                                Err(error)
-                            };
-
-                            seq_handler.handle(res);
-                        }
-                    });
-                }
-
-
-                // write loop
                 while let Ok(buf) = rx.recv() {
                     stream.write_all(&buf).unwrap();
                 }
             });
-        }
+
+            // read loop
+            while let Some(dispatch) = dispatch.upgrade() {
+                let protocol::ResponseHeader { seq, error } = rmp_serde::from_read(&mut reader).unwrap();
+                
+                let seq_handler = {
+                    let mut dispatch = dispatch.lock().unwrap();
+                    match dispatch.map.get(&seq) {
+                        Some(v) => {
+                            if v.streaming() {
+                                v.clone()
+                            } else {
+                                dispatch.map.remove(&seq).unwrap()
+                            }
+                        },
+                        None => {
+                            // response with no handler, ignore
+                            continue;
+                        }
+                    }
+                };
+
+                let res = if error.is_empty() {
+                    Ok(SeqRead(&mut reader))
+                } else {
+                    Err(error)
+                };
+
+                seq_handler.handle(res);
+            }
+        });
         
         client.handshake(MAX_IPC_VERSION).await?;
 
@@ -132,7 +133,7 @@ impl RPCClient {
     /// Sends a command and registers a streaming sequence handler.
     ///
     /// Note that the request is sent immediately (asyncronously, but not lazily).
-    pub(crate) fn start_stream<R: RPCResponse>(self: &Arc<Self>, name: &'static str, body: Vec<u8>) -> RPCStream<R> {
+    pub(crate) fn start_stream<R: RPCResponse>(&self, name: &'static str, body: Vec<u8>) -> RPCStream<R> {
         let handler = Arc::new(Mutex::new(RPCStreamHandler {
             waker: None,
             queue: VecDeque::new()
@@ -256,7 +257,7 @@ impl<T> SeqHandler for Mutex<RequestState<T>> where T: RPCResponse {
 }
 
 pub struct RPCStream<R: RPCResponse> {
-    client: Arc<RPCClient>,
+    client: RPCClient,
     seq: u64,
     handler: Arc<Mutex<RPCStreamHandler<R>>>
 }
