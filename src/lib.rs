@@ -1,23 +1,23 @@
-use std::{collections::{HashMap, VecDeque}, fmt::Debug, net::{SocketAddr, TcpStream}, task::{Poll, Waker}};
+use std::{collections::{HashMap}, fmt::Debug, net::{SocketAddr, TcpStream}};
 
 use std::sync::{Mutex, Arc};
 use std::io;
 
-use futures::{Stream};
-
-use std::future::Future;
-
 use io::{BufReader, Write};
 use protocol::{RequestHeader};
-use serde::{Deserializer, de::DeserializeOwned};
+use serde::{de::DeserializeOwned};
 
 const MAX_IPC_VERSION: u32 = 1;
 
 mod coordinates;
 mod members;
+mod stream;
+mod request;
 
 pub mod protocol;
 
+pub use stream::RPCStream;
+pub use request::RPCRequest;
 
 pub struct SeqRead<'a>(&'a mut BufReader<TcpStream>);
 impl<'a> SeqRead<'a> {
@@ -36,7 +36,7 @@ trait SeqHandler: 'static + Send + Sync {
 type RPCResult<T = ()> = Result<T, String>;
 
 #[derive(Clone)]
-pub struct RPCClient {
+pub struct Client {
     dispatch: Arc<Mutex<DispatchMap>>,
     tx: std::sync::mpsc::Sender<Vec<u8>>
 }
@@ -46,7 +46,7 @@ struct DispatchMap {
     next_seq: u64
 }
 
-impl RPCClient {
+impl Client {
     /// Connect to hub.
     ///
     /// Waits for handshake, and optionally for authentication if an auth key is provided.
@@ -58,7 +58,7 @@ impl RPCClient {
             next_seq: 0
         }));
 
-        let client = RPCClient {
+        let client = Client {
             dispatch,
             tx
         };
@@ -122,31 +122,6 @@ impl RPCClient {
         self.dispatch.lock().unwrap().map.remove(&seq)
     }
 
-    /// Asyncrounously sends a request and waits for a response.
-    pub(crate) fn request<'a, R: RPCResponse>(&'a self, name: &'static str, body: Vec<u8>) -> RPCRequest<'a, R> {
-        RPCRequest {
-            client: self,
-            state: Arc::new(Mutex::new(RequestState::Unsent(SerializedCommand { name, body })))
-        }
-    }
-
-    /// Sends a command and registers a streaming sequence handler.
-    ///
-    /// Note that the request is sent immediately (asyncronously, but not lazily).
-    pub(crate) fn start_stream<R: RPCResponse>(&self, name: &'static str, body: Vec<u8>) -> RPCStream<R> {
-        let handler = Arc::new(Mutex::new(RPCStreamHandler {
-            waker: None,
-            queue: VecDeque::new()
-        }));
-        
-        let seq = self.send_command(SerializedCommand { name, body }, Some(handler.clone()));
-
-        RPCStream {
-            seq,
-            client: self.clone(),
-            handler
-        }
-    }
 
     /// Send a command, optionally registering a handler for responses.
     ///
@@ -190,117 +165,3 @@ pub trait RPCResponse: Sized + Send + 'static {
 impl RPCResponse for () {
     fn read_from(_: SeqRead<'_>) -> RPCResult<Self> { Ok(()) }
 }
-
-pub struct RPCRequest<'a, R: RPCResponse> {
-    client: &'a RPCClient,
-    state: Arc<Mutex<RequestState<R>>>
-}
-
-enum RequestState<R: RPCResponse> {
-    Unsent(SerializedCommand),
-    Pending(Waker),
-    Ready(RPCResult<R>),
-    Invalid
-}
-
-impl<'a, T: RPCResponse> RPCRequest<'a, T> {
-    fn send_ignored(self) {
-        match std::mem::replace(&mut *self.state.lock().unwrap(), RequestState::Invalid) {
-            RequestState::Unsent(cmd) => {
-                self.client.send_command(cmd, None);
-            },
-            _ => {
-                panic!()
-            }
-        }
-    }
-}
-
-impl<'a, T: RPCResponse> Future for RPCRequest<'a, T> {
-    type Output = RPCResult<T>;
-
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-        let mut state = self.state.lock().unwrap();
-
-        match std::mem::replace(&mut *state, RequestState::Invalid) {
-            RequestState::Unsent(cmd) => {
-                *state = RequestState::Pending(cx.waker().clone());
-                self.client.send_command(cmd, Some(self.state.clone()));
-                return Poll::Pending;
-            },
-            RequestState::Pending(_) => {
-                *state = RequestState::Pending(cx.waker().clone());
-                return Poll::Pending;
-            }
-            RequestState::Ready(response) => {
-                return Poll::Ready(response);
-            },
-            RequestState::Invalid => {
-                panic!()
-            }
-        }
-    }
-}
-
-impl<T> SeqHandler for Mutex<RequestState<T>> where T: RPCResponse {
-    fn handle(&self, res: RPCResult<SeqRead>) {
-        let res = res.and_then(T::read_from);
-        let ready = RequestState::Ready(res);
-
-        match std::mem::replace(&mut *self.lock().unwrap(), ready) {
-            RequestState::Pending(waker) => {
-                waker.wake()
-            },
-            _ => panic!()
-        }
-    }
-}
-
-pub struct RPCStream<R: RPCResponse> {
-    client: RPCClient,
-    seq: u64,
-    handler: Arc<Mutex<RPCStreamHandler<R>>>
-}
-
-struct RPCStreamHandler<R: RPCResponse> {
-    waker: Option<Waker>,
-    queue: VecDeque<RPCResult<R>>
-}
-
-impl<T: RPCResponse> SeqHandler for Mutex<RPCStreamHandler<T>> {
-    fn handle(&self, res: RPCResult<SeqRead>) {
-        let RPCStreamHandler { waker, queue } = &mut *self.lock().unwrap();
-
-        let res = res.and_then(T::read_from);
-        queue.push_back(res);
-
-        if let Some(waker) = waker.take() { waker.wake() }
-    }
-    fn streaming(&self) -> bool { true }
-}
-
-impl<T: RPCResponse> Drop for RPCStream<T> {
-    fn drop(&mut self) {
-        self.client.deregister_seq_handler(self.seq);
-        self.client.stop_stream(self.seq).send_ignored();
-    }
-}
-
-impl<C: RPCResponse> Stream for RPCStream<C> {
-    type Item = RPCResult<C>;
-
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        let RPCStreamHandler { waker, queue } = &mut *self.handler.lock().unwrap();
-
-        if let Some(res) = queue.pop_front() { return Poll::Ready(Some(res)) };
-
-        waker.replace(cx.waker().clone());
-
-        Poll::Pending
-    }
-}
-
-

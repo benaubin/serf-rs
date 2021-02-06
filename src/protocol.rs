@@ -47,7 +47,7 @@ macro_rules! req {
             $($key:literal: $val:expr),*
         })?
     ) => {
-        impl crate::RPCClient {
+        impl crate::Client {
             $vis fn $ident<'a>(&'a self$(, $arg: $arg_ty)*) -> crate::RPCRequest<'a, $res> {
                 #[allow(unused_mut)]
                 let mut buf = Vec::new();
@@ -68,7 +68,7 @@ macro_rules! stream {
             $($key:literal: $val:expr),*
         })?
     ) => {
-        impl crate::RPCClient {
+        impl crate::Client {
             $vis fn $ident(self: &std::sync::Arc<Self>$(, $arg: $arg_ty)*) -> crate::RPCStream<$res> {
                 #[allow(unused_mut)]
                 let mut buf = Vec::new();
