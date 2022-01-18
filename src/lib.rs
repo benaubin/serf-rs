@@ -41,6 +41,8 @@ trait SeqHandler: 'static + Send + Sync {
     fn streaming(&self) -> bool {
         false
     }
+    /// is the stream acknowledged ?
+    fn stream_acked(&self) -> bool { false }
 }
 
 type RPCResult<T = ()> = Result<T, String>;
@@ -95,6 +97,9 @@ impl Client {
                     match dispatch.map.get(&seq) {
                         Some(v) => {
                             if v.streaming() {
+                                if !v.stream_acked() {
+                                    continue
+                                }
                                 v.clone()
                             } else {
                                 dispatch.map.remove(&seq).unwrap()
