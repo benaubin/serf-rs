@@ -4,7 +4,6 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-
 use crate::{RPCResponse, RPCResult};
 
 #[derive(Serialize)]
@@ -167,20 +166,13 @@ fn deserialize_ip_addr<'de, D>(de: D) -> Result<IpAddr, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let addr = Ipv6Addr::from(<u128 as serde::Deserialize>::deserialize(de)?);
+    let byte_arr: Result<Vec<u8>, D::Error> = serde_bytes::deserialize(de);
 
-    // serf gives us ipv6 ips, with ipv4 addresses mapped to ipv6.
-    // https://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses
-    //
-    // based on std's unstable to_ipv4_mapped()
-    let addr = match addr.octets() {
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d] => {
-            IpAddr::V4(Ipv4Addr::new(a, b, c, d))
-        }
-        _ => IpAddr::V6(addr),
-    };
-
-    Ok(addr)
+    match byte_arr
+    {
+        Ok(ip_array) => Ok(IpAddr::V4(Ipv4Addr::new(ip_array[12], ip_array[13], ip_array[14], ip_array[15]))),
+        Err(E) => Err(E)
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -311,7 +303,6 @@ req! {
     pub stats() -> AgentStats
 }
 
-// TODO: STREAM, MONITOR, QUERY
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "Event")]
@@ -329,6 +320,11 @@ pub enum StreamMessage {
     },
     #[serde(rename = "member-join")]
     MemberJoin {
+        #[serde(rename = "Members")]
+        members: Vec<Member>,
+    },
+    #[serde(rename = "member-leave")]
+    MemberLeave {
         #[serde(rename = "Members")]
         members: Vec<Member>,
     },
