@@ -2,8 +2,10 @@ use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
+use std::convert::TryInto;
 
 use serde::{Deserialize, Serialize};
+use serde::de::Error;
 use crate::{RPCResponse, RPCResult};
 
 #[derive(Serialize)]
@@ -167,10 +169,16 @@ where
     D: serde::Deserializer<'de>,
 {
     let byte_arr: Result<Vec<u8>, D::Error> = serde_bytes::deserialize(de);
-
     match byte_arr
     {
-        Ok(ip_array) => Ok(IpAddr::V4(Ipv4Addr::new(ip_array[12], ip_array[13], ip_array[14], ip_array[15]))),
+        Ok(ip_array) => {
+            let slice: Result<[u8; 16], _> = ip_array.try_into();
+            match slice {
+                Ok([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, a, b, c, d]) => Ok(IpAddr::V4(Ipv4Addr::new(a, b, c, d))),
+                Ok(ipv6) => Ok(IpAddr::V6(Ipv6Addr::from(ipv6))),
+                Err(_) => Err(D::Error::custom("Invalid value"))
+            }
+        }
         Err(E) => Err(E)
     }
 }
