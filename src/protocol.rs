@@ -1,12 +1,12 @@
+use std::convert::TryInto;
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
-use std::convert::TryInto;
 
-use serde::{Deserialize, Serialize};
-use serde::de::Error;
 use crate::{RPCResponse, RPCResult};
+use serde::de::Error;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -168,18 +168,14 @@ fn deserialize_ip_addr<'de, D>(de: D) -> Result<IpAddr, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let byte_arr: Result<Vec<u8>, D::Error> = serde_bytes::deserialize(de);
-    match byte_arr
-    {
-        Ok(ip_array) => {
-            let slice: Result<[u8; 16], _> = ip_array.try_into();
-            match slice {
-                Ok([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, a, b, c, d]) => Ok(IpAddr::V4(Ipv4Addr::new(a, b, c, d))),
-                Ok(ipv6) => Ok(IpAddr::V6(Ipv6Addr::from(ipv6))),
-                Err(_) => Err(D::Error::custom("Invalid value"))
-            }
+    let bytes: Vec<u8> = serde_bytes::deserialize(de)?;
+    let slice: Result<[u8; 16], _> = bytes.try_into();
+    match slice {
+        Ok([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, a, b, c, d]) => {
+            Ok(IpAddr::V4(Ipv4Addr::new(a, b, c, d)))
         }
-        Err(E) => Err(E)
+        Ok(ipv6) => Ok(IpAddr::V6(Ipv6Addr::from(ipv6))),
+        Err(_) => Err(D::Error::custom("Invalid value")),
     }
 }
 
@@ -310,7 +306,6 @@ req! {
     /// Get information about the Serf agent.
     pub stats() -> AgentStats
 }
-
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "Event")]

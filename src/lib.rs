@@ -42,7 +42,9 @@ trait SeqHandler: 'static + Send + Sync {
         false
     }
     /// is the stream acknowledged ?
-    fn stream_acked(&self) -> bool { false }
+    fn stream_acked(&self) -> bool {
+        false
+    }
 }
 
 type RPCResult<T = ()> = Result<T, String>;
@@ -98,7 +100,7 @@ impl Client {
                         Some(v) => {
                             if v.streaming() {
                                 if !v.stream_acked() {
-                                    continue
+                                    continue;
                                 }
                                 v.clone()
                             } else {
@@ -128,7 +130,7 @@ impl Client {
             client.auth(auth_key).await?;
         }
 
-        return Ok(client);
+        Ok(client)
     }
 
     fn deregister_seq_handler(&self, seq: u64) -> Option<Arc<dyn SeqHandler>> {

@@ -62,18 +62,14 @@ impl<'a, T: RPCResponse> Future for RPCRequest<'a, T> {
             RequestState::Unsent(cmd) => {
                 *state = RequestState::Pending(cx.waker().clone());
                 self.client.send_command(cmd, Some(self.state.clone()));
-                return Poll::Pending;
+                Poll::Pending
             }
             RequestState::Pending(_) => {
                 *state = RequestState::Pending(cx.waker().clone());
-                return Poll::Pending;
+                Poll::Pending
             }
-            RequestState::Ready(response) => {
-                return Poll::Ready(response);
-            }
-            RequestState::Invalid => {
-                panic!()
-            }
+            RequestState::Ready(response) => Poll::Ready(response),
+            RequestState::Invalid => panic!(),
         }
     }
 }

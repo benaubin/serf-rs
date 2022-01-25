@@ -47,7 +47,11 @@ pub(crate) struct RPCStreamHandler<R: RPCResponse> {
 
 impl<T: RPCResponse> SeqHandler for Mutex<RPCStreamHandler<T>> {
     fn handle(&self, res: RPCResult<SeqRead>) {
-        let RPCStreamHandler { waker, queue,acked } = &mut *self.lock().unwrap();
+        let RPCStreamHandler {
+            waker,
+            queue,
+            acked: _,
+        } = &mut *self.lock().unwrap();
 
         let res = res.and_then(T::read_from);
         queue.push_back(res);
@@ -61,7 +65,7 @@ impl<T: RPCResponse> SeqHandler for Mutex<RPCStreamHandler<T>> {
     }
 
     fn stream_acked(&self) -> bool {
-        let mut handler =&mut self.lock().unwrap();
+        let handler = &mut self.lock().unwrap();
         let status = handler.acked;
         handler.acked = true;
         status
@@ -82,7 +86,11 @@ impl<C: RPCResponse> Stream for RPCStream<C> {
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        let RPCStreamHandler { waker, queue,acked } = &mut *self.handler.lock().unwrap();
+        let RPCStreamHandler {
+            waker,
+            queue,
+            acked: _,
+        } = &mut *self.handler.lock().unwrap();
 
         if let Some(res) = queue.pop_front() {
             return Poll::Ready(Some(res));
