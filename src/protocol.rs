@@ -340,6 +340,11 @@ pub enum StreamMessage {
         #[serde(rename = "Members")]
         members: Vec<Member>,
     },
+    #[serde(rename = "member-failed")]
+    MemberFail {
+        #[serde(rename = "Members")]
+        members: Vec<Member>,
+    },
     Query {
         #[serde(rename = "ID")]
         id: u64,
