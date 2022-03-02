@@ -77,8 +77,14 @@ impl Client {
         let dispatch = Arc::downgrade(&client.dispatch);
 
         std::thread::spawn(move || {
-            let mut stream = TcpStream::connect(rpc_addr).unwrap();
-
+            let mut stream = {loop {
+                match TcpStream::connect(rpc_addr){
+                    Ok(stream) => {
+                        break stream; }
+                    Err(_) => {}
+                }
+            }
+            };
             // clone the stream to create a reader
             let mut reader = BufReader::new(stream.try_clone().unwrap());
 
