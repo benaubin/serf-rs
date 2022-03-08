@@ -1,10 +1,48 @@
-use std::net::SocketAddr;
+use futures::{AsyncBufReadExt, StreamExt};
+use serde::{Deserialize, Serialize};
+use std::io::Read;
+use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::Arc;
+
+use log::{logger, Level, Metadata, Record};
+use log::{LevelFilter, SetLoggerError};
+
+struct SimpleLogger;
+
+impl log::Log for SimpleLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Info
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            println!("{} - {}", record.level(), record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static LOGGER: SimpleLogger = SimpleLogger;
+
+pub fn init() -> Result<(), SetLoggerError> {
+    log::set_logger(&LOGGER).map(|()| log::set_max_level(LevelFilter::Info))
+}
 
 #[tokio::main]
 async fn main() {
-    let socket = "0.0.0.0:7373".parse::<SocketAddr>().unwrap();
-    let client = serf_rpc::Client::connect(socket, None).await.unwrap();
-
+    init();
+    let socket = "192.168.122.79:7373".parse::<SocketAddr>().unwrap();
+    let client = serf_rpc::Client::connect(socket, None).await;
+    match client {
+        Ok(_) => {
+            println!("Success")
+        }
+        Err(_) => {
+            println!("Failure")
+        }
+    }
+    let client = client.unwrap();
     let members = client.members().await.unwrap();
 
     println!("{:?}", members);
@@ -34,4 +72,11 @@ async fn main() {
             coord.estimate_rtt(&current_coord).as_secs_f32()
         );
     }
+
+    let mut test = serf_rpc::Client::stream(&Arc::new(client), "member-failed");
+    let mut result = test.take(1);
+    println!(
+        "{:?}",
+        result.collect::<Vec<_>>().await[0].as_ref().unwrap()
+    );
 }

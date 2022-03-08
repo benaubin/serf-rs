@@ -8,9 +8,9 @@ use std::io;
 use std::sync::{Arc, Mutex};
 
 use io::{BufReader, Write};
+use log::info;
 use protocol::RequestHeader;
 use serde::de::DeserializeOwned;
-use log::info;
 const MAX_IPC_VERSION: u32 = 1;
 
 mod coordinates;
@@ -80,13 +80,11 @@ impl Client {
             let mut stream = {
                 info!("Connecting to the Serf instance");
                 loop {
-                match TcpStream::connect(rpc_addr){
-                    Ok(stream) => {
-                        info!("Connected to the Serf instance");
-                        break stream; }
-                    Err(_) => {}
+                    if let Ok(stream) =TcpStream::connect(rpc_addr){
+                            info!("Connected to the Serf instance");
+                            break stream;
+                        }
                 }
-            }
             };
             // clone the stream to create a reader
             let mut reader = BufReader::new(stream.try_clone().unwrap());

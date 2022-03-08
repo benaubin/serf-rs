@@ -307,12 +307,11 @@ req! {
     pub stats() -> AgentStats
 }
 fn deserialize_payload<'de, D>(de: D) -> Result<Vec<u8>, D::Error>
-    where
-        D: serde::Deserializer<'de>,
+where
+    D: serde::Deserializer<'de>,
 {
     let byte_arr: Result<Vec<u8>, D::Error> = serde_bytes::deserialize(de);
-    return  byte_arr;
-
+    byte_arr
 }
 #[derive(Deserialize, Debug)]
 #[serde(tag = "Event")]
@@ -325,7 +324,6 @@ pub enum StreamMessage {
         name: String,
         #[serde(rename = "Payload")]
         #[serde(deserialize_with = "deserialize_payload")]
-
         payload: Vec<u8>,
         #[serde(rename = "Coalesce")]
         coalesce: bool,
