@@ -37,7 +37,7 @@ async fn main() {
     let mut serf_address: String = SERF_ADDRESS.into();
     serf_address.push_str(SERF_PORT);
     let socket = serf_address
-        .parse::<SocketAddr>()
+        .parse()
         .expect("Invalid serf IP address provided");
     let client = serf_rpc::Client::connect(socket, None).await;
     let client = client.unwrap();
