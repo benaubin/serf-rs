@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use log::{logger, Level, Metadata, Record};
 use log::{LevelFilter, SetLoggerError};
+const SERF_ADDRESS: &'static str = "0.0.0.0";
+const SERF_PORT: &'static str = ":7373";
 
 struct SimpleLogger;
 
@@ -32,16 +34,12 @@ pub fn init() -> Result<(), SetLoggerError> {
 #[tokio::main]
 async fn main() {
     init();
-    let socket = "192.168.122.79:7373".parse::<SocketAddr>().unwrap();
+    let mut serf_address: String = SERF_ADDRESS.into();
+    serf_address.push_str(SERF_PORT);
+    let socket = serf_address
+        .parse::<SocketAddr>()
+        .expect("Invalid serf IP address provided");
     let client = serf_rpc::Client::connect(socket, None).await;
-    match client {
-        Ok(_) => {
-            println!("Success")
-        }
-        Err(_) => {
-            println!("Failure")
-        }
-    }
     let client = client.unwrap();
     let members = client.members().await.unwrap();
 

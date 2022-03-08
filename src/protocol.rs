@@ -310,8 +310,7 @@ fn deserialize_payload<'de, D>(de: D) -> Result<Vec<u8>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let byte_arr: Result<Vec<u8>, D::Error> = serde_bytes::deserialize(de);
-    byte_arr
+    serde_bytes::deserialize(de)
 }
 #[derive(Deserialize, Debug)]
 #[serde(tag = "Event")]

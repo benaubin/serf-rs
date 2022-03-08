@@ -80,10 +80,10 @@ impl Client {
             let mut stream = {
                 info!("Connecting to the Serf instance");
                 loop {
-                    if let Ok(stream) =TcpStream::connect(rpc_addr){
-                            info!("Connected to the Serf instance");
-                            break stream;
-                        }
+                    if let Ok(stream) = TcpStream::connect(rpc_addr) {
+                        info!("Connected to the Serf instance");
+                        break stream;
+                    }
                 }
             };
             // clone the stream to create a reader
