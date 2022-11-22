@@ -1,11 +1,12 @@
+use std::convert::TryInto;
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
-use serde::{Deserialize, Serialize};
-
 use crate::{RPCResponse, RPCResult};
+use serde::de::Error;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -146,7 +147,7 @@ req! {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Member {
     pub name: String,
@@ -167,23 +168,18 @@ fn deserialize_ip_addr<'de, D>(de: D) -> Result<IpAddr, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let addr = Ipv6Addr::from(<u128 as serde::Deserialize>::deserialize(de)?);
-
-    // serf gives us ipv6 ips, with ipv4 addresses mapped to ipv6.
-    // https://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses
-    //
-    // based on std's unstable to_ipv4_mapped()
-    let addr = match addr.octets() {
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d] => {
-            IpAddr::V4(Ipv4Addr::new(a, b, c, d))
+    let bytes: Vec<u8> = serde_bytes::deserialize(de)?;
+    let slice: Result<[u8; 16], _> = bytes.try_into();
+    match slice {
+        Ok([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, a, b, c, d]) => {
+            Ok(IpAddr::V4(Ipv4Addr::new(a, b, c, d)))
         }
-        _ => IpAddr::V6(addr),
-    };
-
-    Ok(addr)
+        Ok(ipv6) => Ok(IpAddr::V6(Ipv6Addr::from(ipv6))),
+        Err(_) => Err(D::Error::custom("Invalid value")),
+    }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct MembersResponse {
     pub members: Vec<Member>,
@@ -310,9 +306,12 @@ req! {
     /// Get information about the Serf agent.
     pub stats() -> AgentStats
 }
-
-// TODO: STREAM, MONITOR, QUERY
-
+fn deserialize_payload<'de, D>(de: D) -> Result<Vec<u8>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    serde_bytes::deserialize(de)
+}
 #[derive(Deserialize, Debug)]
 #[serde(tag = "Event")]
 pub enum StreamMessage {
@@ -323,12 +322,23 @@ pub enum StreamMessage {
         #[serde(rename = "Name")]
         name: String,
         #[serde(rename = "Payload")]
+        #[serde(deserialize_with = "deserialize_payload")]
         payload: Vec<u8>,
         #[serde(rename = "Coalesce")]
         coalesce: bool,
     },
     #[serde(rename = "member-join")]
     MemberJoin {
+        #[serde(rename = "Members")]
+        members: Vec<Member>,
+    },
+    #[serde(rename = "member-leave")]
+    MemberLeave {
+        #[serde(rename = "Members")]
+        members: Vec<Member>,
+    },
+    #[serde(rename = "member-failed")]
+    MemberFail {
         #[serde(rename = "Members")]
         members: Vec<Member>,
     },

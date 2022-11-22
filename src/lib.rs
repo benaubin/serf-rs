@@ -8,9 +8,9 @@ use std::io;
 use std::sync::{Arc, Mutex};
 
 use io::{BufReader, Write};
+use log::info;
 use protocol::RequestHeader;
 use serde::de::DeserializeOwned;
-
 const MAX_IPC_VERSION: u32 = 1;
 
 mod coordinates;
@@ -39,6 +39,10 @@ trait SeqHandler: 'static + Send + Sync {
     fn handle(&self, res: RPCResult<SeqRead>);
     /// are we expecting more than one response?
     fn streaming(&self) -> bool {
+        false
+    }
+    /// is the stream acknowledged ?
+    fn stream_acked(&self) -> bool {
         false
     }
 }
@@ -73,8 +77,15 @@ impl Client {
         let dispatch = Arc::downgrade(&client.dispatch);
 
         std::thread::spawn(move || {
-            let mut stream = TcpStream::connect(rpc_addr).unwrap();
-
+            let mut stream = {
+                info!("Connecting to the Serf instance");
+                loop {
+                    if let Ok(stream) = TcpStream::connect(rpc_addr) {
+                        info!("Connected to the Serf instance");
+                        break stream;
+                    }
+                }
+            };
             // clone the stream to create a reader
             let mut reader = BufReader::new(stream.try_clone().unwrap());
 
@@ -95,6 +106,9 @@ impl Client {
                     match dispatch.map.get(&seq) {
                         Some(v) => {
                             if v.streaming() {
+                                if !v.stream_acked() {
+                                    continue;
+                                }
                                 v.clone()
                             } else {
                                 dispatch.map.remove(&seq).unwrap()
@@ -123,7 +137,7 @@ impl Client {
             client.auth(auth_key).await?;
         }
 
-        return Ok(client);
+        Ok(client)
     }
 
     fn deregister_seq_handler(&self, seq: u64) -> Option<Arc<dyn SeqHandler>> {
